@@ -3,6 +3,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Array;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.SplittableRandom;
 import java.util.random.RandomGenerator;
 
@@ -127,16 +128,33 @@ public class IndexableSkipList<T extends Comparable<? super T>> {
 	}
 
 	public boolean remove(T value) {
+		ArrayList<Node> rightNodesAbove = new ArrayList<>(highestLaneIndex + 1);
 		Node currentNode = lanes[highestLaneIndex];
 		for(int i = highestLaneIndex; i >= 0; i--) {
 			currentNode = currentNode.data.instances.get(i);
 			while(currentNode.next != null) {
 				int comparison = value.compareTo(currentNode.next.data.value);
 				if(comparison == 0) {
-					removeNode(currentNode.next);
-					--size;
+					removeNode(currentNode.next.data.instances, rightNodesAbove);
 					return true;
 				}
+				if(comparison < 0) {
+					rightNodesAbove.add(currentNode.next);
+					break;
+				}
+				currentNode = currentNode.next;
+			}
+		}
+		return false;
+	}
+
+	public boolean contains(T value) {
+		Node currentNode = lanes[highestLaneIndex];
+		for(int i = highestLaneIndex; i >= 0; i--) {
+			currentNode = currentNode.data.instances.get(i);
+			while(currentNode.next != null) {
+				int comparison = value.compareTo(currentNode.next.data.value);
+				if(comparison == 0) return true;
 				if(comparison < 0) break;
 				currentNode = currentNode.next;
 			}
@@ -145,13 +163,47 @@ public class IndexableSkipList<T extends Comparable<? super T>> {
 	}
 
 	public T getAtIndex(int index) {
-		return getNodeAtIndex(index).data.value;
+		if(index < 0 || index >= size) throw new ArrayIndexOutOfBoundsException("no element at index: " + index);
+		Node currentNode = lanes[highestLaneIndex];
+		int spanSum = 0;
+		for(int i = highestLaneIndex; i >= 0; i--) {
+			currentNode = currentNode.data.instances.get(i);
+			while(currentNode.next != null) {
+				int spanSumInc = spanSum + currentNode.next.span;
+				if(spanSumInc == index) return currentNode.next.data.value;
+				if(spanSumInc > index) break;
+				currentNode = currentNode.next;
+				spanSum += currentNode.span;
+			}
+		}
+		// should not be reached
+		throw new ArrayIndexOutOfBoundsException("no element at index: " + index);
 	}
 
 	public T removeAtIndex(int index) {
-		Node node = getNodeAtIndex(index);
-		removeNode(node);
-		return node.data.value;
+		if(index < 0 || index >= size) throw new ArrayIndexOutOfBoundsException("no element at index: " + index);
+		ArrayList<Node> rightNodesAbove = new ArrayList<>(highestLaneIndex + 1);
+		Node currentNode = lanes[highestLaneIndex];
+		int spanSum = 0;
+		for(int i = highestLaneIndex; i >= 0; i--) {
+			currentNode = currentNode.data.instances.get(i);
+			while(currentNode.next != null) {
+				int spanSumInc = spanSum + currentNode.next.span;
+				if(spanSumInc == index) {
+					T val = currentNode.next.data.value;
+					removeNode(currentNode.next.data.instances, rightNodesAbove);
+					return val;
+				}
+				if(spanSumInc > index) {
+					rightNodesAbove.add(currentNode.next);
+					break;
+				}
+				currentNode = currentNode.next;
+				spanSum += currentNode.span;
+			}
+		}
+		// should not be reached
+		throw new ArrayIndexOutOfBoundsException("no element at index: " + index);
 	}
 
 	@Override
@@ -211,33 +263,20 @@ public class IndexableSkipList<T extends Comparable<? super T>> {
 		return leftNodes;
 	}
 
-	private void removeNode(Node nodeToRemove) {
-		for(Node node : nodeToRemove.data.instances) {
+	// removes the node from every lane where it's present, decrements the span of nodes to the right in lanes where it isn't
+	private void removeNode(List<Node> laneInstances, List<Node> rightNodesAbove) {
+		for(Node node : laneInstances) {
 			node.prev.next = node.next;
 			if(node.next != null) {
 				node.next.prev = node.prev;
-				node.next.span = node.span - 1;
+				node.next.span += node.span - 1;
 			}
-			node.next = null;
-			node.prev = null;
+			node.next = node.prev = null;
 		}
-	}
-
-	private Node getNodeAtIndex(int index) {
-		if(index < 0 || index >= size) throw new ArrayIndexOutOfBoundsException("no element at index: " + index);
-		Node currentNode = lanes[highestLaneIndex];
-		int spanSum = 0;
-		for(int i = highestLaneIndex; i >= 0; i--) {
-			currentNode = currentNode.data.instances.get(i);
-			while(currentNode.next != null) {
-				int spanSumInc = spanSum + currentNode.next.span;
-				if(spanSumInc == index) return currentNode.next;
-				if(spanSumInc > index) break;
-				currentNode = currentNode.next;
-				spanSum += currentNode.span;
-			}
+		for(Node node : rightNodesAbove) {
+			--node.span;
 		}
-		return currentNode;
+		--size;
 	}
 
 	// TODO: tweak values
