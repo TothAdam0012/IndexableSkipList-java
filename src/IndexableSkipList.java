@@ -21,21 +21,13 @@ public class IndexableSkipList<T extends Comparable<? super T>> {
 		private Node next;
 		private Node prev;
 		private int span;
-		private final NodeData data;
-
-		private Node(Node next, Node prev, int span, NodeData data) {
-			this.next = next;
-			this.prev = prev;
-			this.span = span;
-			this.data = data;
-		}
-	}
-
-	private class NodeData {
 		private final T value;
 		private final ArrayList<Node> instances;
 
-		private NodeData(T value, ArrayList<Node> instances) {
+		private Node(Node next, Node prev, int span, T value, ArrayList<Node> instances) {
+			this.next = next;
+			this.prev = prev;
+			this.span = span;
 			this.value = value;
 			this.instances = instances;
 		}
@@ -64,7 +56,7 @@ public class IndexableSkipList<T extends Comparable<? super T>> {
 		// create HEAD node for all lanes
 		ArrayList<Node> headInstances = new ArrayList<>(32);
 		for(int i = 0; i < 32; i++) {
-			Node headNode = new Node(null, null, -1, new NodeData(null, headInstances));
+			Node headNode = new Node(null, null, -1, null, headInstances);
 			this.lanes[i] = headNode;
 			headInstances.add(headNode); // need the headInstances for the loop in pathToInsert()
 		}
@@ -95,7 +87,8 @@ public class IndexableSkipList<T extends Comparable<? super T>> {
 		if(highestLaneIndex < laneIndex) {
 			highestLaneIndex = laneIndex;
 		}
-		NodeData nodeData = new NodeData(element, new ArrayList<>(laneIndex + 1));
+
+		ArrayList<Node> instances = new ArrayList<>(laneIndex + 1);
 
 		for(int i = 0; i <= highestLaneIndex; i++) {
 			Node nodeToLeft;
@@ -110,13 +103,13 @@ public class IndexableSkipList<T extends Comparable<? super T>> {
 
 			int nodeSpan = elementIndex - spanSumLeft;
 			if(i <= laneIndex) {
-				Node node = new Node(nodeToLeft.next, nodeToLeft, nodeSpan, nodeData);
+				Node node = new Node(nodeToLeft.next, nodeToLeft, nodeSpan, element, instances);
 				nodeToLeft.next = node;
 				if(node.next != null) {
 					node.next.prev = node;
 					node.next.span -= nodeSpan - 1;
 				}
-				nodeData.instances.add(node);
+				instances.add(node);
 			} else {
 				if(nodeToLeft.next != null) {
 					++nodeToLeft.next.span;
@@ -131,11 +124,11 @@ public class IndexableSkipList<T extends Comparable<? super T>> {
 		ArrayList<Node> rightNodesAbove = new ArrayList<>(highestLaneIndex + 1);
 		Node currentNode = lanes[highestLaneIndex];
 		for(int i = highestLaneIndex; i >= 0; i--) {
-			currentNode = currentNode.data.instances.get(i);
+			currentNode = currentNode.instances.get(i);
 			while(currentNode.next != null) {
-				int comparison = value.compareTo(currentNode.next.data.value);
+				int comparison = value.compareTo(currentNode.next.value);
 				if(comparison == 0) {
-					removeNode(currentNode.next.data.instances, rightNodesAbove);
+					removeNode(currentNode.next.instances, rightNodesAbove);
 					return true;
 				}
 				if(comparison < 0) {
@@ -151,9 +144,9 @@ public class IndexableSkipList<T extends Comparable<? super T>> {
 	public boolean contains(T value) {
 		Node currentNode = lanes[highestLaneIndex];
 		for(int i = highestLaneIndex; i >= 0; i--) {
-			currentNode = currentNode.data.instances.get(i);
+			currentNode = currentNode.instances.get(i);
 			while(currentNode.next != null) {
-				int comparison = value.compareTo(currentNode.next.data.value);
+				int comparison = value.compareTo(currentNode.next.value);
 				if(comparison == 0) return true;
 				if(comparison < 0) break;
 				currentNode = currentNode.next;
@@ -167,10 +160,10 @@ public class IndexableSkipList<T extends Comparable<? super T>> {
 		Node currentNode = lanes[highestLaneIndex];
 		int spanSum = 0;
 		for(int i = highestLaneIndex; i >= 0; i--) {
-			currentNode = currentNode.data.instances.get(i);
+			currentNode = currentNode.instances.get(i);
 			while(currentNode.next != null) {
 				int spanSumInc = spanSum + currentNode.next.span;
-				if(spanSumInc == index) return currentNode.next.data.value;
+				if(spanSumInc == index) return currentNode.next.value;
 				if(spanSumInc > index) break;
 				currentNode = currentNode.next;
 				spanSum += currentNode.span;
@@ -186,12 +179,12 @@ public class IndexableSkipList<T extends Comparable<? super T>> {
 		Node currentNode = lanes[highestLaneIndex];
 		int spanSum = 0;
 		for(int i = highestLaneIndex; i >= 0; i--) {
-			currentNode = currentNode.data.instances.get(i);
+			currentNode = currentNode.instances.get(i);
 			while(currentNode.next != null) {
 				int spanSumInc = spanSum + currentNode.next.span;
 				if(spanSumInc == index) {
-					T val = currentNode.next.data.value;
-					removeNode(currentNode.next.data.instances, rightNodesAbove);
+					T val = currentNode.next.value;
+					removeNode(currentNode.next.instances, rightNodesAbove);
 					return val;
 				}
 				if(spanSumInc > index) {
@@ -216,7 +209,7 @@ public class IndexableSkipList<T extends Comparable<? super T>> {
 		Node current = lanes[0].next;
 		sb.append("IndexableSkipList [");
 		while(current != null) {
-			sb.append(current.data.value).append(", ");
+			sb.append(current.value).append(", ");
 			current = current.next;
 		}
 		sb.setLength(sb.length()-2);
@@ -231,7 +224,7 @@ public class IndexableSkipList<T extends Comparable<? super T>> {
 			sb.append("L").append(i).append(": ");
 			Node currentNode = lanes[i];
 			while(currentNode != null) {
-				sb.append(currentNode.data == null ? "null" : currentNode.data.value).append(":").append(currentNode.span).append(", ");
+				sb.append(currentNode.value == null ? "null" : currentNode.value).append(":").append(currentNode.span).append(", ");
 				currentNode = currentNode.next;
 			}
 			sb.setLength(sb.length() - 2);
@@ -249,9 +242,9 @@ public class IndexableSkipList<T extends Comparable<? super T>> {
 		Node currentNode = lanes[highestLaneIndex];
 		int spanSum = 0;
 		for(int i = highestLaneIndex; i >= 0; i--) {
-			currentNode = currentNode.data.instances.get(i);
+			currentNode = currentNode.instances.get(i);
 			while(currentNode.next != null) {
-				int comparison = value.compareTo(currentNode.next.data.value);
+				int comparison = value.compareTo(currentNode.next.value);
 				// if the value is already in the list return null to tell the insert method it is a duplicate
 				if(comparison == 0) return null;
 				if(comparison < 0) break;
